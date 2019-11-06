@@ -15,7 +15,7 @@ import Base: ==, <, <=, -, +, *, /, ~, isapprox,
 using Base: @pure
 
 # T => BaseType
-# f => Number of Bytes reserved for fractional part
+# f => Number of bits reserved for fractional part
 abstract type FixedPoint{T <: Integer, f} <: Real end
 
 
@@ -25,7 +25,7 @@ export
     Normed,
     floattype,
 # "special" typealiases
-    # Q and U typealiases are exported in separate source files
+    # Q and N typealiases are exported in separate source files
 # Functions
     scaledual
 
@@ -188,14 +188,21 @@ for f in (:rem, :mod, :mod1, :min, :max)
     end
 end
 
-# When multiplying by a float, reduce two multiplies to one.
-# Particularly useful for arrays.
-scaledual(Tdual::Type, x) = oneunit(Tdual), x
-scaledual(b::Tdual, x) where {Tdual <: Number} = b, x
-scaledual(Tdual::Type, x::Union{T,AbstractArray{T}}) where {T <: FixedPoint} =
-    convert(Tdual, 1/oneunit(T)), reinterpret(rawtype(T), x)
-scaledual(b::Tdual, x::Union{T,AbstractArray{T}}) where {Tdual <: Number,T <: FixedPoint} =
-    convert(Tdual, b/oneunit(T)), reinterpret(rawtype(T), x)
+"""
+    sd, ad = scaledual(s::Number, a)
+
+Return `sd` and `ad` such that `sd * ad == s * a`.
+When `a` is an array of FixedPoint numbers, `sd*ad` might be faster to compute than `s*a`.
+"""
+scaledual(b::Number, x::Union{Number,AbstractArray{<:Number}}) = b, x
+scaledual(b::Number, x::FixedPoint) = b/rawone(x), reinterpret(x)
+scaledual(b::Number, x::AbstractArray{T}) where T <: FixedPoint =
+    b/rawone(T), reinterpret(rawtype(T), x)
+
+scaledual(::Type{Tdual}, x::Union{Number,AbstractArray{<:Number}}) where Tdual = oneunit(Tdual), x
+scaledual(::Type{Tdual}, x::FixedPoint) where Tdual = convert(Tdual, 1/rawone(x)), reinterpret(x)
+scaledual(::Type{Tdual}, x::AbstractArray{T}) where {Tdual, T <: FixedPoint} =
+    convert(Tdual, 1/rawone(T)), reinterpret(rawtype(T), x)
 
 @noinline function throw_converterror(::Type{T}, x) where {T <: FixedPoint}
     n = 2^(8*sizeof(T))
